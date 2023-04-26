@@ -1,0 +1,67 @@
+import smbus
+import math
+import time
+
+bus = smbus.SMBus(1)
+BMI160_ADDRESS = 0x69
+
+def read_byte(reg):
+    return bus.read_byte_data(BMI160_ADDRESS, reg)
+
+def read_word(reg):
+    high = bus.read_byte_data(BMI160_ADDRESS, reg)
+    low = bus.read_byte_data(BMI160_ADDRESS, reg+1)
+    value = (high << 8) + low
+    return value
+
+def read_word_2c(reg):
+    value = read_word(reg)
+    if (value & 0x8000) == 0x8000:
+        return -((65535 - value) + 1)
+    else:
+        return value
+
+def dist(a,b):
+    return math.sqrt((a*a)+(b*b))
+
+def get_y_rotation(x,y,z):
+    radians = math.atan2(x, dist(y,z))
+    return -math.degrees(radians)
+
+def get_x_rotation(x,y,z):
+    radians = math.atan2(y, dist(x,z))
+    return math.degrees(radians)
+
+def read_accel():
+    x = read_word_2c(0x12)
+    y = read_word_2c(0x14)
+    z = read_word_2c(0x16)
+    return [x, y, z]
+
+def read_mag():
+    x = read_word_2c(0x0E)
+    y = read_word_2c(0x10)
+    z = read_word_2c(0x12)
+    return [x, y, z]
+
+def compute_heading():
+    acc_x, acc_y, acc_z = read_accel()
+    mag_x, mag_y, mag_z = read_mag()
+
+    pitch = get_x_rotation(acc_x, acc_y, acc_z)
+    roll = get_y_rotation(acc_x, acc_y, acc_z)
+
+    heading = math.atan2(mag_y*math.cos(pitch)+mag_x*math.sin(roll)*math.sin(pitch)+mag_z*math.cos(roll)*math.sin(pitch),
+                         mag_x*math.cos(roll)-mag_z*math.sin(roll))
+    heading = math.degrees(heading)
+
+    if heading < 0:
+        heading += 360
+
+    return heading
+
+if __name__ == "__main__":
+    while True:
+        heading = compute_heading()
+        print("Heading: %.2f" % heading)
+        time.sleep(0.1)
